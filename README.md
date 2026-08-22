@@ -4,11 +4,24 @@ A fast, Git-native personal todo tool sharing `joy-core` as its foundation. Jyn 
 
 ## Install
 
-Prebuilt binary (Linux, macOS, Windows) - available from the first
-tagged release onward:
+Prebuilt binary - available from the first tagged release onward.
+
+macOS / Linux:
 
 ```sh
 curl -fsSL get.joyint.com/jyn | sh
+```
+
+Windows:
+
+```powershell
+winget install -s winget joyint.jyn
+```
+
+Without winget:
+
+```powershell
+irm get.joyint.com/jyn.ps1 | iex
 ```
 
 Alternative: `cargo install jyn-cli`.
