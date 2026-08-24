@@ -123,6 +123,14 @@ Every listing shows which `.jyn/` is currently active in its footer, and the emp
 
 If a list looks empty when you did not expect it to, check that line: you are most likely in a directory that resolves to a different workspace than the one you added tasks to.
 
+If you want to keep a workspace inside a subdirectory of another one — say a project-specific `.jyn/` below a `.jyn/` in your home — pass `-w` (or `--working-dir`) to pin jyn to that directory and skip the walk-up:
+
+```sh
+jyn -w ~/projects/blog add "Draft post"   # creates ~/projects/blog/.jyn on first add
+```
+
+`JYN_WORKING_DIR` does the same when set in the environment.
+
 ## Viewing and Editing
 
 `jyn show` prints the full detail of one task, including its description and tags.

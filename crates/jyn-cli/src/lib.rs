@@ -39,7 +39,7 @@ struct Cli {
     #[arg(long, global = true)]
     short: bool,
 
-    /// Run as if jyn was started in <PATH>. Also via JYN_WORKING_DIR.
+    /// Use PATH as the workspace root.
     #[arg(
         short = 'w',
         long = "working-dir",
