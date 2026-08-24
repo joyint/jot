@@ -1,0 +1,29 @@
+id: JYN-0013-2D
+title: Shell completions with dynamic task-ID and tag completers
+type: task
+status: review
+priority: medium
+assignees:
+- member: ai:claude@joy
+capabilities:
+- implement
+effort: 3
+created_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+created: 2026-08-24T11:06:59.239527027Z
+updated: 2026-08-24T11:11:29.287691526Z
+updated_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+description: 'Match the completions surface of joy: ''jyn completions <shell>'' emits static scripts for bash/zsh/fish/powershell/elvish, and the clap_complete_env dynamic protocol (''COMPLETE=zsh jyn'') completes task IDs, occurrence addresses (#N@DATE), and existing tags at the shell prompt. Setup snippet in --after_help. No colon-aware bash wrapper needed (jyn has no ai:...@joy values). Refines JOT-000D for jyn.'
+comments:
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T11:06:59.359334274Z
+  text: 'Plan: (1) add clap_complete and clap_complete_env workspace deps; (2) new commands/completions.rs with CompletionsArgs { shell } and after_help matching joy''s format; supports bash/zsh/fish/powershell/elvish; (3) new Commands::Completions variant + dispatch; (4) at the very start of run(), clap_complete_env::CompleteEnv::with_factory(Cli::command).complete() so COMPLETE=zsh jyn works; (5) two dynamic completers in crates/jyn-cli/src/complete.rs: complete_task_id (walks .jyn/items/, emits short forms via display::short_id plus completed occurrence addresses N@DATE) and complete_tag (unions all tag values on visible tasks); (6) attach with #[arg(add = ArgValueCompleter::new(...))] on ShowArgs.id, EditArgs.id, AssignArgs.id, IdArgs.id (drives close/reopen/archive/unarchive), RmArgs.id, and LsArgs.tags; (7) bats: static output for bash contains ''complete'' and mentions ''jyn''; each other supported shell produces non-empty output; ''unknown-shell'' bails; --after_help contains the five setup lines.'
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T11:11:29.239095283Z
+  text: |-
+    [x] Added clap_complete (unstable-dynamic) as workspace + jyn-cli dep.
+    [x] New commands/completions.rs: 'jyn completions <shell>' emits static scripts via clap_complete::generate for bash / zsh / fish / powershell / elvish; unknown shell bails with a listing of the supported set.
+    [x] New complete.rs: dynamic completers (complete_task_id emits bare short forms plus #N@DATE occurrence addresses; complete_tag unions tag values on non-archived tasks). Both resolve the workspace root honoring JYN_WORKING_DIR, so completion works under -w too.
+    [x] run() opens with clap_complete::CompleteEnv::with_factory(Cli::command).complete() so COMPLETE=<shell> jyn drives the dynamic protocol.
+    [x] ArgValueCompleter attached on ShowArgs.id, EditArgs.id, AssignArgs.id, IdArgs.id (close/reopen/archive/unarchive), RmArgs.id, and AddArgs.tags / EditArgs.add_tags / EditArgs.remove_tags / LsArgs.tags.
+    [x] Six new bats scenarios covering static outputs, unsupported-shell diagnostic, --help snippet, and dynamic ID/tag completion end-to-end. 102 bats + 60 unit tests, cargo fmt --check, clippy -D warnings all green.
+    [x] Verified manually: static 'jyn completions bash' produces a _jyn function; dynamic 'COMPLETE=bash jyn -- jyn show ' returns bare IDs (1, 2, 3, 3@2026-04-13) and 'COMPLETE=bash jyn -- jyn ls --tag ' returns the tag union. No colon-aware bash wrapper needed - jyn has no ai:...@joy values.

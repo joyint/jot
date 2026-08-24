@@ -787,3 +787,63 @@ YAML
     [[ "$output" == *"#1"* ]]
     [[ "$output" != *"#1-"* ]]
 }
+
+@test "help advertises the bare short ID, not an unquoted # form" {
+    # An unquoted # starts a comment in bash/zsh/PowerShell, so help must
+    # not showcase an invocation the shell would swallow. JYN-0011-08.
+    run jyn show --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"short \`A1\`"* ]]
+    [[ "$output" != *"#A1"* ]]
+}
+
+@test "bare short IDs drive the whole lifecycle" {
+    jyn add "Shell-proof task" >/dev/null
+
+    run jyn show 1
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Shell-proof task"* ]]
+
+    run jyn edit 1 --prio high
+    [ "$status" -eq 0 ]
+
+    run jyn done 1
+    [ "$status" -eq 0 ]
+
+    run jyn reopen 1
+    [ "$status" -eq 0 ]
+}
+
+@test "'help' as trailing subcommand mirrors --help at every level" {
+    # Matches joy's rewrite_trailing_help behavior. JYN-0012-8E.
+    run jyn help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Usage: jyn"* ]]
+
+    run jyn ls help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Usage: jyn ls"* ]]
+
+    run jyn add help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Usage: jyn add"* ]]
+
+    run jyn config help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Usage: jyn config"* ]]
+
+    run jyn config set help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Usage: jyn config set"* ]]
+}
+
+@test "'--' escape hatch still lets a task be titled 'help'" {
+    # The trailing-help rewriter is greedy (matches joy); '--' ends
+    # option processing so 'help' reaches AddArgs as a title.
+    run jyn add -- help
+    [ "$status" -eq 0 ]
+
+    run jyn ls
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"help"* ]]
+}

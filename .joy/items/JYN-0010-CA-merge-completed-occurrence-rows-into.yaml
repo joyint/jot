@@ -1,0 +1,28 @@
+id: JYN-0010-CA
+title: Merge completed-occurrence rows into the main ls table
+type: task
+status: review
+priority: medium
+assignees:
+- member: ai:claude@joy
+capabilities:
+- implement
+effort: 3
+created_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+created: 2026-08-24T10:23:34.982340706Z
+updated: 2026-08-24T10:29:40.017211338Z
+updated_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+description: 'jyn ls --closed / --all currently render completed occurrences of recurring series as a second standalone table (own header, frame, and footer below the task table), which looks sloppy. Merge them into the main table as regular rows: ID #N@DATE (addressing per JYN-000A-B1 unchanged), occurrence date in the existing DUE column (it is that occurrence''s due; no severity coloring, dimmed), title with the closed styling from JOT-003F (dim + strikethrough), other columns empty. Occurrences sort within the closed block of the smart sort, by occurrence date descending. Single footer counts both: ''N tasks, M occurrences''. print_occurrences_section is removed. ID column gets wider in these views; accepted. Refines the display part of JYN-000A-B1.'
+comments:
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T10:23:45.630201806Z
+  text: 'Plan: in run_ls, replace the post-table print_occurrences_section call with unified rows. Introduce a small row model (task row vs occurrence row) feeding the existing column pipeline: occurrence rows carry id label #N@DATE, due = occurrence date rendered plain/dim without severity, title = series title with closed styling, all other columns empty. collect_occurrences stays the data source but its rows are appended to the render list after the sorted tasks'' closed block (occurrences sorted by occurrence instant descending; archived tasks stay last). Footer becomes ''N tasks, M occurrences'' via the existing plural helper. Delete print_occurrences_section. Adapt/extend bats: workspace/recurrence scenarios asserting a single frame (exactly one header line), occurrence rows inside the main table for -a and --closed, and unchanged default view. Run fmt, clippy, unit + bats.'
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T10:29:39.970986983Z
+  text: |-
+    [x] Introduced LsRow enum (task | occurrence) in run_ls; occurrence rows merge into the single table, inserted after the closed block and before the first archived row.
+    [x] Occurrence cells: ID keeps #N@DATE addressing (bypasses format_ids), DUE shows the occurrence date dimmed without severity coloring, title rendered with the closed styling (strike + dim, JOT-003F); prio/desc/assignee/tags stay empty.
+    [x] Single frame and single footer: 'N tasks, M occurrences' (task part dropped when zero); print_occurrences_section deleted.
+    [x] Default view unchanged (occurrences only collected for --closed / --all).
+    [x] Two new bats scenarios: single header + combined footer in ls -a; occurrences-only --closed footer. Existing #N@DATE assertions unchanged and green.
+    [x] Verified: 92 bats + 60 unit tests, cargo fmt --check, clippy -D warnings all clean.

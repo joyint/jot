@@ -71,3 +71,31 @@ load setup
     run jyn done "#1"          # nothing left to complete
     [ "$status" -ne 0 ]
 }
+
+@test "closed views render occurrences inside the single task table" {
+    jyn add "Water plants" --due 2026-04-13 --recur "FREQ=DAILY" >/dev/null
+    jyn add "Old chore" >/dev/null
+    jyn close 2 >/dev/null
+    jyn done "#1" >/dev/null
+
+    run jyn ls -a
+    [ "$status" -eq 0 ]
+    # One table: a single header row, no separate occurrences section.
+    [ "$(grep -c "TITLE" <<<"$output")" -eq 1 ]
+    [[ "$output" != *"DONE"* ]]
+    # The occurrence row sits in the main table, its date in DUE.
+    [[ "$output" == *"#1@2026-04-13"* ]]
+    # Single combined footer.
+    [[ "$output" == *"2 tasks, 1 occurrence"* ]]
+}
+
+@test "closed view with only occurrences counts just those in the footer" {
+    jyn add "Water plants" --due 2026-04-13 --recur "FREQ=DAILY" >/dev/null
+    jyn done "#1" >/dev/null
+
+    run jyn ls --closed
+    [ "$status" -eq 0 ]
+    [ "$(grep -c "TITLE" <<<"$output")" -eq 1 ]
+    [[ "$output" == *"1 occurrence"* ]]
+    [[ "$output" != *"0 tasks"* ]]
+}

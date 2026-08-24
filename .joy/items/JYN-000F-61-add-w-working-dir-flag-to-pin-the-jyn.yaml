@@ -1,0 +1,29 @@
+id: JYN-000F-61
+title: Add -w/--working-dir flag to pin the jyn workspace root
+type: task
+status: review
+priority: medium
+assignees:
+- member: ai:claude@joy
+capabilities:
+- implement
+effort: 2
+created_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+created: 2026-08-24T06:07:19.848315405Z
+updated: 2026-08-24T06:07:49.869250261Z
+updated_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+description: jyn's find_workspace_root walks up like git, so a .jyn/ in $HOME captures every subdirectory below it with no escape. Add a -w/--working-dir global flag (plus JYN_WORKING_DIR env) that skips the walk-up and uses the given directory as the workspace root verbatim, so a first `jyn -w ~/projects/x add` there creates a fresh .jyn/ alongside the parent's. Mirrors joy's own -w spelling. Includes bats tests and a short paragraph in the workspace chapter of the tutorial.
+comments:
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T06:07:30.291908599Z
+  text: 'Plan: add global -w/--working-dir on the top-level Cli struct (clap env=JYN_WORKING_DIR); before resolving the workspace, canonicalize the path, chdir there, and use it as the root verbatim (skip find_workspace_root''s walk-up so a subdirectory workspace below an ancestor .jyn/ becomes possible). Fail loudly with --working-dir <path>: ... if the target is missing or not a directory. Add three bats cases (walk-up skip, missing dir, JYN_WORKING_DIR env). Add a short paragraph to the ''Where Jyn Stores Your Tasks'' chapter of the tutorial and re-sync the in-crate copy.'
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T06:07:43.714589440Z
+  text: |-
+    [x] Added -w/--working-dir global flag in crates/jyn-cli/src/lib.rs; enabled clap 'env' feature in the workspace Cargo.toml.
+    [x] Root resolution: with -w, canonicalize + chdir + use verbatim (no walk-up); without -w, unchanged git-style walk-up with cwd fallback.
+    [x] Shortened help line to 'Use PATH as the workspace root' to match the other options' style; clap renders the env hint automatically.
+    [x] Three new bats cases in tests/integration/workspace.bats: walk-up skip via -w ., missing directory fails loudly, JYN_WORKING_DIR env mirrors the flag.
+    [x] Tutorial: new paragraph at the end of 'Where Jyn Stores Your Tasks' in docs/user/Tutorial.md; re-synced crates/jyn-cli/docs/user/Tutorial.md.
+    [x] Verified: cargo fmt --check, cargo clippy --workspace -- -D warnings, 90 bats + 60 unit tests all green.
+    [x] Pushed to claude/jyn-working-directory-flag-r1tqn1 (commits 81982ee, 0776259) — currently tagged [no-item]; will amend to [JYN-000F-61] and force-with-lease if you approve.

@@ -3,13 +3,15 @@
 
 mod color;
 mod commands;
+mod complete;
 
 use std::io::IsTerminal;
 use std::path::Path;
 
 use anyhow::{Context, Result};
 use chrono::Local;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::engine::ArgValueCompleter;
 use joy_core::model::item::Priority;
 
 use jyn_core::display;
@@ -38,6 +40,17 @@ struct Cli {
     /// Use compact labels. Also via JYN_SHORT.
     #[arg(long, global = true)]
     short: bool,
+
+    /// Run as if jyn was started in <PATH>
+    #[arg(
+        short = 'w',
+        long = "working-dir",
+        global = true,
+        value_name = "PATH",
+        value_hint = clap::ValueHint::DirPath,
+        env = "JYN_WORKING_DIR"
+    )]
+    working_dir: Option<std::path::PathBuf>,
 
     /// Ls-style flags usable without typing 'ls': `jyn -a`, `jyn --sort
     /// title`, `jyn --tag work`, and so on.
@@ -77,6 +90,8 @@ enum Commands {
     Tutorial(commands::tutorial::TutorialArgs),
     /// Update the jyn binary to the latest release
     Update(commands::update::UpdateArgs),
+    /// Generate shell completions
+    Completions(commands::completions::CompletionsArgs),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -117,7 +132,7 @@ struct AddArgs {
     priority: Option<PriorityArg>,
 
     /// Tag (repeatable).
-    #[arg(short, long = "tag")]
+    #[arg(short, long = "tag", add = ArgValueCompleter::new(complete::complete_tag))]
     tags: Vec<String>,
 
     /// Description.
@@ -139,13 +154,15 @@ struct AddArgs {
 
 #[derive(clap::Args)]
 struct ShowArgs {
-    /// Task ID (short `#A1` or full `TODO-00A1-EA`).
+    /// Task ID (short `A1` or full `TODO-00A1-EA`).
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
 }
 
 #[derive(clap::Args)]
 struct EditArgs {
-    /// Task ID.
+    /// Task ID (short `A1` or full `TODO-00A1-EA`).
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
 
     /// Replace the title.
@@ -171,11 +188,11 @@ struct EditArgs {
     priority: Option<PriorityArg>,
 
     /// Add a tag (repeatable).
-    #[arg(long = "add-tag")]
+    #[arg(long = "add-tag", add = ArgValueCompleter::new(complete::complete_tag))]
     add_tags: Vec<String>,
 
     /// Remove a tag (repeatable).
-    #[arg(long = "remove-tag")]
+    #[arg(long = "remove-tag", add = ArgValueCompleter::new(complete::complete_tag))]
     remove_tags: Vec<String>,
 
     /// Replace the description.
@@ -209,7 +226,8 @@ struct EditArgs {
 
 #[derive(clap::Args)]
 struct AssignArgs {
-    /// Task ID.
+    /// Task ID (short `A1` or full `TODO-00A1-EA`).
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
     /// Member (e-mail).
     member: String,
@@ -217,7 +235,8 @@ struct AssignArgs {
 
 #[derive(clap::Args)]
 struct IdArgs {
-    /// Task ID (short `#A1` or full `TODO-00A1-EA`).
+    /// Task ID (short `A1` or full `TODO-00A1-EA`).
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
 }
 
@@ -257,7 +276,7 @@ struct LsArgs {
     due: Option<String>,
 
     /// Filter by tag (repeatable, AND).
-    #[arg(short, long = "tag")]
+    #[arg(short, long = "tag", add = ArgValueCompleter::new(complete::complete_tag))]
     tags: Vec<String>,
 
     /// Sort order.
@@ -276,7 +295,8 @@ struct LsArgs {
 
 #[derive(clap::Args)]
 struct RmArgs {
-    /// Task ID (short `#A1` or full `TODO-00A1-EA`)
+    /// Task ID (short `A1` or full `TODO-00A1-EA`)
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
 }
 
@@ -313,8 +333,42 @@ fn print_welcome(root: &Path) {
     println!();
 }
 
+/// Rewrite `jyn <cmd...> help` to `jyn <cmd...> --help` so users
+/// coming from AWS/gcloud-style CLIs (where `help` is a subcommand at
+/// every level) get the expected behaviour. The rewrite is
+/// conservative: it only fires when the trailing `help` follows a
+/// chain of valid clap subcommands. This way positional arguments
+/// that happen to be the literal string `help` (e.g. `jyn add "help"`)
+/// are not stolen. Ported from joy's rewrite_trailing_help.
+fn rewrite_trailing_help(mut args: Vec<String>, root: &clap::Command) -> Vec<String> {
+    if args.last().map(|s| s.as_str()) != Some("help") {
+        return args;
+    }
+    let mut current = root;
+    let mut idx = 1;
+    let last = args.len() - 1;
+    while idx < last {
+        match current.find_subcommand(&args[idx]) {
+            Some(sub) => {
+                current = sub;
+                idx += 1;
+            }
+            None => return args,
+        }
+    }
+    if idx == last {
+        args[last] = "--help".to_string();
+    }
+    args
+}
+
 pub fn run() -> Result<()> {
-    let cli = Cli::parse();
+    // Serves dynamic completions when COMPLETE=<shell> is set. Must run
+    // before any parsing; returns early in that case so the shell only
+    // sees the candidate list.
+    clap_complete::CompleteEnv::with_factory(Cli::command).complete();
+    let raw: Vec<String> = std::env::args().collect();
+    let cli = Cli::parse_from(rewrite_trailing_help(raw, &Cli::command()));
     color::init(cli.color);
 
     let mode = if cli.short || std::env::var_os("JYN_SHORT").is_some() {
@@ -323,12 +377,26 @@ pub fn run() -> Result<()> {
         LabelMode::Long
     };
 
-    // Resolve the workspace by walking up from the current directory to
-    // the nearest .jyn/ (like git), so a subdirectory shares the
-    // workspace above it. Fall back to the current directory when none
-    // exists, so a first `jyn add` creates .jyn/ right here.
-    let cwd = std::env::current_dir().context("cannot read current directory")?;
-    let root = storage::find_workspace_root(&cwd).unwrap_or(cwd);
+    // Resolve the workspace root. Without -w, walk up from the current
+    // directory to the nearest .jyn/ (like git) so a subdirectory shares
+    // the workspace above it, and fall back to the cwd so a first
+    // `jyn add` creates .jyn/ right here. With -w, use that path
+    // verbatim and skip the walk-up: it lets the user pin the workspace
+    // to a subdirectory (and create a fresh .jyn/ there) even when a
+    // parent already has one — the whole point of the flag.
+    let root = if let Some(ref path) = cli.working_dir {
+        let canon = std::fs::canonicalize(path)
+            .map_err(|e| anyhow::anyhow!("--working-dir {}: {e}", path.display()))?;
+        if !canon.is_dir() {
+            anyhow::bail!("--working-dir {}: not a directory", canon.display());
+        }
+        std::env::set_current_dir(&canon)
+            .map_err(|e| anyhow::anyhow!("--working-dir {}: {e}", canon.display()))?;
+        canon
+    } else {
+        let cwd = std::env::current_dir().context("cannot read current directory")?;
+        storage::find_workspace_root(&cwd).unwrap_or(cwd)
+    };
 
     match cli.command {
         Some(Commands::Add(args)) => run_add(&root, args, mode)?,
@@ -345,6 +413,10 @@ pub fn run() -> Result<()> {
         Some(Commands::Config(args)) => commands::config::run(args)?,
         Some(Commands::Tutorial(args)) => commands::tutorial::run(args)?,
         Some(Commands::Update(args)) => commands::update::run(args)?,
+        Some(Commands::Completions(args)) => {
+            let mut cmd = Cli::command();
+            commands::completions::run(args, &mut cmd)?;
+        }
     }
 
     if std::io::stdout().is_terminal() {
@@ -431,6 +503,17 @@ fn run_add(root: &Path, args: AddArgs, mode: LabelMode) -> Result<()> {
     Ok(())
 }
 
+/// One row of the ls table: a live task, or a completed occurrence of
+/// a recurring series rendered as read-only history (JYN-000A-B1).
+enum LsRow<'a> {
+    Task(&'a Task),
+    Occurrence {
+        id: String,
+        due: jyn_core::model::Due,
+        title: String,
+    },
+}
+
 fn run_ls(root: &Path, args: &LsArgs, mode: LabelMode) -> Result<()> {
     let today = Local::now().date_naive();
     let due_filter = match args.due.as_deref() {
@@ -497,62 +580,121 @@ fn run_ls(root: &Path, args: &LsArgs, mode: LabelMode) -> Result<()> {
         Vec::new()
     };
 
-    if filtered.is_empty() {
-        if occurrences.is_empty() {
-            println!("No open tasks. Add one with: jyn add \"<title>\"");
-        } else {
-            print_occurrences_section(&occurrences, root);
-        }
+    // One table for everything: occurrence-history rows slot in behind
+    // the closed tasks (the smart sort keeps archived last), so history
+    // reads as a run of struck rows instead of a second table with its
+    // own frame and footer. JYN-0010-CA.
+    let occ_count = occurrences.len();
+    let mut rows: Vec<LsRow> = filtered.iter().map(|t| LsRow::Task(t)).collect();
+    let insert_at = rows
+        .iter()
+        .position(|r| matches!(r, LsRow::Task(t) if t.archived))
+        .unwrap_or(rows.len());
+    for (i, (id, due, title)) in occurrences.into_iter().enumerate() {
+        rows.insert(insert_at + i, LsRow::Occurrence { id, due, title });
+    }
+
+    if rows.is_empty() {
+        println!("No open tasks. Add one with: jyn add \"<title>\"");
         return Ok(());
     }
 
-    let full_ids: Vec<&str> = filtered.iter().map(|t| t.item.id.as_str()).collect();
-    let labels = display::format_ids(&full_ids);
-
-    let show_prio = filtered
+    // Collision-aware short labels for task rows; occurrence rows carry
+    // their own `#N@DATE` addressing and bypass format_ids.
+    let task_ids: Vec<&str> = rows
         .iter()
-        .any(|t| priority_label(&t.item.priority, mode).is_some());
-    let show_due = filtered.iter().any(|t| t.due.is_some());
-    let show_desc = filtered
-        .iter()
-        .any(|t| t.item.description.as_deref().is_some_and(|s| !s.is_empty()));
-    let show_assignee = filtered.iter().any(|t| !t.item.assignees.is_empty());
-    let show_tags = filtered.iter().any(|t| !t.item.tags.is_empty());
-
-    let prio_labels: Vec<&'static str> = filtered
-        .iter()
-        .map(|t| priority_label(&t.item.priority, mode).unwrap_or(""))
-        .collect();
-
-    let due_labels: Vec<(String, DueSeverity)> = filtered
-        .iter()
-        .map(|t| match t.due {
-            // Render at date-level for the table; time-bearing due is shown
-            // explicitly in `jyn show`.
-            Some(d) => due::render_due(d.date(), today, mode),
-            None => (String::new(), DueSeverity::Later),
+        .filter_map(|r| match r {
+            LsRow::Task(t) => Some(t.item.id.as_str()),
+            LsRow::Occurrence { .. } => None,
         })
         .collect();
-    let assignee_labels: Vec<String> = filtered
+    let task_labels = display::format_ids(&task_ids);
+    let mut task_labels_iter = task_labels.iter();
+    let labels: Vec<String> = rows
         .iter()
-        .map(|t| {
-            t.item
+        .map(|r| match r {
+            LsRow::Task(_) => task_labels_iter.next().cloned().unwrap_or_default(),
+            LsRow::Occurrence { id, .. } => id.clone(),
+        })
+        .collect();
+
+    let show_prio = rows.iter().any(|r| match r {
+        LsRow::Task(t) => priority_label(&t.item.priority, mode).is_some(),
+        LsRow::Occurrence { .. } => false,
+    });
+    let show_due = rows.iter().any(|r| match r {
+        LsRow::Task(t) => t.due.is_some(),
+        LsRow::Occurrence { .. } => true,
+    });
+    let show_desc = rows.iter().any(|r| match r {
+        LsRow::Task(t) => t.item.description.as_deref().is_some_and(|s| !s.is_empty()),
+        LsRow::Occurrence { .. } => false,
+    });
+    let show_assignee = rows.iter().any(|r| match r {
+        LsRow::Task(t) => !t.item.assignees.is_empty(),
+        LsRow::Occurrence { .. } => false,
+    });
+    let show_tags = rows.iter().any(|r| match r {
+        LsRow::Task(t) => !t.item.tags.is_empty(),
+        LsRow::Occurrence { .. } => false,
+    });
+
+    let prio_labels: Vec<&'static str> = rows
+        .iter()
+        .map(|r| match r {
+            LsRow::Task(t) => priority_label(&t.item.priority, mode).unwrap_or(""),
+            LsRow::Occurrence { .. } => "",
+        })
+        .collect();
+
+    // Due cells render at date-level (time-bearing due is shown in `jyn
+    // show`). Tasks get severity coloring; occurrence rows show the
+    // completed occurrence's date with no severity (the past is not
+    // "overdue"), dimmed in the print loop below.
+    let due_labels: Vec<(String, Option<DueSeverity>)> = rows
+        .iter()
+        .map(|r| match r {
+            LsRow::Task(t) => match t.due {
+                Some(d) => {
+                    let (label, sev) = due::render_due(d.date(), today, mode);
+                    (label, Some(sev))
+                }
+                None => (String::new(), None),
+            },
+            LsRow::Occurrence { due, .. } => (due.date().to_string(), None),
+        })
+        .collect();
+    let assignee_labels: Vec<String> = rows
+        .iter()
+        .map(|r| match r {
+            LsRow::Task(t) => t
+                .item
                 .assignees
                 .iter()
                 .map(|a| a.member.as_str())
                 .collect::<Vec<_>>()
-                .join(", ")
+                .join(", "),
+            LsRow::Occurrence { .. } => String::new(),
         })
         .collect();
-    let desc_labels: Vec<String> = filtered
+    let desc_labels: Vec<String> = rows
         .iter()
-        .map(|t| match t.item.description.as_deref() {
-            Some(s) if !s.is_empty() => s.chars().count().to_string(),
-            _ => String::new(),
+        .map(|r| match r {
+            LsRow::Task(t) => match t.item.description.as_deref() {
+                Some(s) if !s.is_empty() => s.chars().count().to_string(),
+                _ => String::new(),
+            },
+            LsRow::Occurrence { .. } => String::new(),
         })
         .collect();
     // Tags: plain space-separated, no '#' - TAGS column sits rightmost.
-    let tag_labels: Vec<String> = filtered.iter().map(|t| t.item.tags.join(" ")).collect();
+    let tag_labels: Vec<String> = rows
+        .iter()
+        .map(|r| match r {
+            LsRow::Task(t) => t.item.tags.join(" "),
+            LsRow::Occurrence { .. } => String::new(),
+        })
+        .collect();
 
     let id_width = labels.iter().map(|s| s.len()).max().unwrap_or(2).max(2);
     let prio_header = match mode {
@@ -622,9 +764,12 @@ fn run_ls(root: &Path, args: &LsArgs, mode: LabelMode) -> Result<()> {
     // Prefer hugging content: TITLE column = max(longest title, "TITLE")
     // + 5 right-margin. If that does not fit in the terminal, fall back
     // to Joy-style truncation and let the table span the full width.
-    let longest_title = filtered
+    let longest_title = rows
         .iter()
-        .map(|t| t.item.title.len())
+        .map(|r| match r {
+            LsRow::Task(t) => t.item.title.len(),
+            LsRow::Occurrence { title, .. } => title.len(),
+        })
         .max()
         .unwrap_or(0);
     let title_natural = longest_title.max("TITLE".len()) + 5;
@@ -657,25 +802,23 @@ fn run_ls(root: &Path, args: &LsArgs, mode: LabelMode) -> Result<()> {
     }
     println!("{}", color::header(&headers, frame_w));
 
-    for ((((((task, label), prio_str), (due_str, due_sev)), desc_str), assignee_str), tag_str) in
-        filtered
-            .iter()
-            .zip(labels.iter())
-            .zip(prio_labels.iter())
-            .zip(due_labels.iter())
-            .zip(desc_labels.iter())
-            .zip(assignee_labels.iter())
-            .zip(tag_labels.iter())
-    {
-        let id_cell = color::id(&format!("{label:<id_width$}"));
-        let mut line = id_cell.clone();
+    for (i, row) in rows.iter().enumerate() {
+        let label = &labels[i];
+        let prio_str = prio_labels[i];
+        let (due_str, due_sev) = &due_labels[i];
+        let desc_str = &desc_labels[i];
+        let assignee_str = &assignee_labels[i];
+        let tag_str = &tag_labels[i];
+
+        let mut line = color::id(&format!("{label:<id_width$}"));
         if show_prio {
-            let cell = if prio_str.is_empty() {
-                format!("{:<w$}", "", w = prio_width)
-            } else {
-                let colored = colored_priority(&task.item.priority, prio_str);
-                let pad = prio_width.saturating_sub(prio_str.len());
-                format!("{colored}{}", " ".repeat(pad))
+            let cell = match row {
+                LsRow::Task(t) if !prio_str.is_empty() => {
+                    let colored = colored_priority(&t.item.priority, prio_str);
+                    let pad = prio_width.saturating_sub(prio_str.len());
+                    format!("{colored}{}", " ".repeat(pad))
+                }
+                _ => format!("{:<w$}", "", w = prio_width),
             };
             line.push_str(&format!(" {cell}"));
         }
@@ -684,7 +827,10 @@ fn run_ls(root: &Path, args: &LsArgs, mode: LabelMode) -> Result<()> {
                 format!("{:<w$}", "", w = due_width)
             } else {
                 let padded = format!("{due_str:<due_width$}");
-                colored_due(&padded, *due_sev)
+                match due_sev {
+                    Some(sev) => colored_due(&padded, *sev),
+                    None => color::inactive(&padded),
+                }
             };
             line.push_str(&format!(" {cell}"));
         }
@@ -693,17 +839,24 @@ fn run_ls(root: &Path, args: &LsArgs, mode: LabelMode) -> Result<()> {
         // stays plain so the line isn't struck through across empty
         // space. In truncated mode we reserve 2 right-margin chars so
         // the `...` ending doesn't touch the next column.
-        let title_text = if truncate {
-            truncate_title(&task.item.title, title_col.saturating_sub(2))
-        } else {
-            task.item.title.clone()
+        let full_title = match row {
+            LsRow::Task(t) => t.item.title.as_str(),
+            LsRow::Occurrence { title, .. } => title.as_str(),
         };
-        let styled = if task.archived {
-            color::strikethrough_faint(&title_text)
-        } else if matches!(task.item.status, joy_core::model::item::Status::Closed) {
-            color::strikethrough_dim(&title_text)
+        let title_text = if truncate {
+            truncate_title(full_title, title_col.saturating_sub(2))
         } else {
-            title_text.clone()
+            full_title.to_string()
+        };
+        let styled = match row {
+            LsRow::Task(t) if t.archived => color::strikethrough_faint(&title_text),
+            LsRow::Task(t) if matches!(t.item.status, joy_core::model::item::Status::Closed) => {
+                color::strikethrough_dim(&title_text)
+            }
+            LsRow::Task(_) => title_text.clone(),
+            // History rows read as completed work: same strike + dim as
+            // closed tasks.
+            LsRow::Occurrence { .. } => color::strikethrough_dim(&title_text),
         };
         let pad = title_col.saturating_sub(title_text.len());
         line.push_str(&format!(" {styled}{}", " ".repeat(pad)));
@@ -734,14 +887,23 @@ fn run_ls(root: &Path, args: &LsArgs, mode: LabelMode) -> Result<()> {
     // store is always visible (especially when the list is empty because
     // you are in the wrong directory). Path dimmed, home abbreviated.
     println!("{}", color::separator(frame_w));
+    let task_count = rows.len() - occ_count;
+    let counts = if occ_count == 0 {
+        color::plural(task_count, "task")
+    } else if task_count == 0 {
+        color::plural(occ_count, "occurrence")
+    } else {
+        format!(
+            "{}, {}",
+            color::plural(task_count, "task"),
+            color::plural(occ_count, "occurrence")
+        )
+    };
     println!(
         "{}  {}",
-        color::label(&color::plural(filtered.len(), "task")),
+        color::label(&counts),
         color::inactive(&abbreviate_home(&storage::jyn_dir(root)))
     );
-    if !occurrences.is_empty() {
-        print_occurrences_section(&occurrences, root);
-    }
     Ok(())
 }
 
@@ -778,40 +940,6 @@ fn collect_occurrences(
     // occurrences order consistently.
     rows.sort_by_key(|row| std::cmp::Reverse(row.1.as_utc_instant()));
     rows
-}
-
-/// Render the completed-occurrences section: header, rows, footer.
-fn print_occurrences_section(rows: &[(String, jyn_core::model::Due, String)], root: &Path) {
-    let id_w = rows
-        .iter()
-        .map(|(id, _, _)| id.len())
-        .max()
-        .unwrap_or(2)
-        .max("ID".len());
-    let done_w = "DONE".len().max(10);
-    let title_w = rows
-        .iter()
-        .map(|(_, _, t)| t.len())
-        .max()
-        .unwrap_or(0)
-        .max("TITLE".len());
-    let frame_w = id_w + 1 + done_w + 1 + title_w;
-    let headers = [("ID", id_w), ("DONE", done_w), ("TITLE", title_w)];
-    println!("{}", color::header(&headers, frame_w));
-    for (id, done, title) in rows {
-        println!(
-            "{} {} {}",
-            color::id(&format!("{id:<id_w$}")),
-            color::inactive(&format!("{:<done_w$}", done.to_string())),
-            title,
-        );
-    }
-    println!("{}", color::separator(frame_w));
-    println!(
-        "{}  {}",
-        color::label(&color::plural(rows.len(), "occurrence")),
-        color::inactive(&abbreviate_home(&storage::jyn_dir(root))),
-    );
 }
 
 /// Abbreviate a leading home-directory prefix to `~` for display.

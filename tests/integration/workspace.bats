@@ -48,3 +48,43 @@ load setup
     [[ "$output" == *"Workspace:"* ]]
     [[ "$output" == *"/.jyn"* ]]
 }
+
+@test "-w points the workspace at an explicit directory (skips walk-up)" {
+    # A .jyn/ at the parent normally captures subdirectories via walk-up.
+    run jyn add "Parent task"
+    [ "$status" -eq 0 ]
+    [ -d ".jyn/items" ]
+
+    mkdir sub
+    cd sub
+
+    # Without -w, we inherit the parent's workspace.
+    run jyn ls
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Parent task"* ]]
+
+    # -w . pins the workspace to this directory, creating a fresh .jyn/
+    # here instead of walking up to the parent's.
+    run jyn -w . add "Sub task"
+    [ "$status" -eq 0 ]
+    [ -d ".jyn/items" ]
+
+    run jyn -w . ls
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Sub task"* ]]
+    [[ "$output" != *"Parent task"* ]]
+}
+
+@test "-w on a missing directory fails loudly" {
+    run jyn -w ./no-such-dir ls
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"working-dir"* || "$stderr" == *"working-dir"* ]]
+}
+
+@test "JYN_WORKING_DIR env var mirrors -w" {
+    mkdir pinned
+    JYN_WORKING_DIR="$PWD/pinned" run jyn add "Pinned task"
+    [ "$status" -eq 0 ]
+    [ -d "pinned/.jyn/items" ]
+    [ ! -d ".jyn" ]
+}
