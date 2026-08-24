@@ -39,6 +39,17 @@ struct Cli {
     #[arg(long, global = true)]
     short: bool,
 
+    /// Run as if jyn was started in <PATH>. Also via JYN_WORKING_DIR.
+    #[arg(
+        short = 'w',
+        long = "working-dir",
+        global = true,
+        value_name = "PATH",
+        value_hint = clap::ValueHint::DirPath,
+        env = "JYN_WORKING_DIR"
+    )]
+    working_dir: Option<std::path::PathBuf>,
+
     /// Ls-style flags usable without typing 'ls': `jyn -a`, `jyn --sort
     /// title`, `jyn --tag work`, and so on.
     #[command(flatten)]
@@ -323,12 +334,26 @@ pub fn run() -> Result<()> {
         LabelMode::Long
     };
 
-    // Resolve the workspace by walking up from the current directory to
-    // the nearest .jyn/ (like git), so a subdirectory shares the
-    // workspace above it. Fall back to the current directory when none
-    // exists, so a first `jyn add` creates .jyn/ right here.
-    let cwd = std::env::current_dir().context("cannot read current directory")?;
-    let root = storage::find_workspace_root(&cwd).unwrap_or(cwd);
+    // Resolve the workspace root. Without -w, walk up from the current
+    // directory to the nearest .jyn/ (like git) so a subdirectory shares
+    // the workspace above it, and fall back to the cwd so a first
+    // `jyn add` creates .jyn/ right here. With -w, use that path
+    // verbatim and skip the walk-up: it lets the user pin the workspace
+    // to a subdirectory (and create a fresh .jyn/ there) even when a
+    // parent already has one — the whole point of the flag.
+    let root = if let Some(ref path) = cli.working_dir {
+        let canon = std::fs::canonicalize(path)
+            .map_err(|e| anyhow::anyhow!("--working-dir {}: {e}", path.display()))?;
+        if !canon.is_dir() {
+            anyhow::bail!("--working-dir {}: not a directory", canon.display());
+        }
+        std::env::set_current_dir(&canon)
+            .map_err(|e| anyhow::anyhow!("--working-dir {}: {e}", canon.display()))?;
+        canon
+    } else {
+        let cwd = std::env::current_dir().context("cannot read current directory")?;
+        storage::find_workspace_root(&cwd).unwrap_or(cwd)
+    };
 
     match cli.command {
         Some(Commands::Add(args)) => run_add(&root, args, mode)?,
