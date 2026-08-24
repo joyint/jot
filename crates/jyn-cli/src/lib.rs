@@ -3,6 +3,7 @@
 
 mod color;
 mod commands;
+mod complete;
 
 use std::io::IsTerminal;
 use std::path::Path;
@@ -10,6 +11,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use chrono::Local;
 use clap::{CommandFactory, Parser};
+use clap_complete::engine::ArgValueCompleter;
 use joy_core::model::item::Priority;
 
 use jyn_core::display;
@@ -88,6 +90,8 @@ enum Commands {
     Tutorial(commands::tutorial::TutorialArgs),
     /// Update the jyn binary to the latest release
     Update(commands::update::UpdateArgs),
+    /// Generate shell completions
+    Completions(commands::completions::CompletionsArgs),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -128,7 +132,7 @@ struct AddArgs {
     priority: Option<PriorityArg>,
 
     /// Tag (repeatable).
-    #[arg(short, long = "tag")]
+    #[arg(short, long = "tag", add = ArgValueCompleter::new(complete::complete_tag))]
     tags: Vec<String>,
 
     /// Description.
@@ -151,12 +155,14 @@ struct AddArgs {
 #[derive(clap::Args)]
 struct ShowArgs {
     /// Task ID (short `A1` or full `TODO-00A1-EA`).
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
 }
 
 #[derive(clap::Args)]
 struct EditArgs {
-    /// Task ID.
+    /// Task ID (short `A1` or full `TODO-00A1-EA`).
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
 
     /// Replace the title.
@@ -182,11 +188,11 @@ struct EditArgs {
     priority: Option<PriorityArg>,
 
     /// Add a tag (repeatable).
-    #[arg(long = "add-tag")]
+    #[arg(long = "add-tag", add = ArgValueCompleter::new(complete::complete_tag))]
     add_tags: Vec<String>,
 
     /// Remove a tag (repeatable).
-    #[arg(long = "remove-tag")]
+    #[arg(long = "remove-tag", add = ArgValueCompleter::new(complete::complete_tag))]
     remove_tags: Vec<String>,
 
     /// Replace the description.
@@ -220,7 +226,8 @@ struct EditArgs {
 
 #[derive(clap::Args)]
 struct AssignArgs {
-    /// Task ID.
+    /// Task ID (short `A1` or full `TODO-00A1-EA`).
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
     /// Member (e-mail).
     member: String,
@@ -229,6 +236,7 @@ struct AssignArgs {
 #[derive(clap::Args)]
 struct IdArgs {
     /// Task ID (short `A1` or full `TODO-00A1-EA`).
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
 }
 
@@ -268,7 +276,7 @@ struct LsArgs {
     due: Option<String>,
 
     /// Filter by tag (repeatable, AND).
-    #[arg(short, long = "tag")]
+    #[arg(short, long = "tag", add = ArgValueCompleter::new(complete::complete_tag))]
     tags: Vec<String>,
 
     /// Sort order.
@@ -288,6 +296,7 @@ struct LsArgs {
 #[derive(clap::Args)]
 struct RmArgs {
     /// Task ID (short `A1` or full `TODO-00A1-EA`)
+    #[arg(add = ArgValueCompleter::new(complete::complete_task_id))]
     id: String,
 }
 
@@ -354,6 +363,10 @@ fn rewrite_trailing_help(mut args: Vec<String>, root: &clap::Command) -> Vec<Str
 }
 
 pub fn run() -> Result<()> {
+    // Serves dynamic completions when COMPLETE=<shell> is set. Must run
+    // before any parsing; returns early in that case so the shell only
+    // sees the candidate list.
+    clap_complete::CompleteEnv::with_factory(Cli::command).complete();
     let raw: Vec<String> = std::env::args().collect();
     let cli = Cli::parse_from(rewrite_trailing_help(raw, &Cli::command()));
     color::init(cli.color);
@@ -400,6 +413,10 @@ pub fn run() -> Result<()> {
         Some(Commands::Config(args)) => commands::config::run(args)?,
         Some(Commands::Tutorial(args)) => commands::tutorial::run(args)?,
         Some(Commands::Update(args)) => commands::update::run(args)?,
+        Some(Commands::Completions(args)) => {
+            let mut cmd = Cli::command();
+            commands::completions::run(args, &mut cmd)?;
+        }
     }
 
     if std::io::stdout().is_terminal() {
