@@ -9,7 +9,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use chrono::Local;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use joy_core::model::item::Priority;
 
 use jyn_core::display;
@@ -324,8 +324,38 @@ fn print_welcome(root: &Path) {
     println!();
 }
 
+/// Rewrite `jyn <cmd...> help` to `jyn <cmd...> --help` so users
+/// coming from AWS/gcloud-style CLIs (where `help` is a subcommand at
+/// every level) get the expected behaviour. The rewrite is
+/// conservative: it only fires when the trailing `help` follows a
+/// chain of valid clap subcommands. This way positional arguments
+/// that happen to be the literal string `help` (e.g. `jyn add "help"`)
+/// are not stolen. Ported from joy's rewrite_trailing_help.
+fn rewrite_trailing_help(mut args: Vec<String>, root: &clap::Command) -> Vec<String> {
+    if args.last().map(|s| s.as_str()) != Some("help") {
+        return args;
+    }
+    let mut current = root;
+    let mut idx = 1;
+    let last = args.len() - 1;
+    while idx < last {
+        match current.find_subcommand(&args[idx]) {
+            Some(sub) => {
+                current = sub;
+                idx += 1;
+            }
+            None => return args,
+        }
+    }
+    if idx == last {
+        args[last] = "--help".to_string();
+    }
+    args
+}
+
 pub fn run() -> Result<()> {
-    let cli = Cli::parse();
+    let raw: Vec<String> = std::env::args().collect();
+    let cli = Cli::parse_from(rewrite_trailing_help(raw, &Cli::command()));
     color::init(cli.color);
 
     let mode = if cli.short || std::env::var_os("JYN_SHORT").is_some() {

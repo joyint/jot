@@ -1,0 +1,26 @@
+id: JYN-0012-8E
+title: Accept 'help' as trailing subcommand at every level
+type: task
+status: review
+priority: medium
+assignees:
+- member: ai:claude@joy
+capabilities:
+- implement
+effort: 2
+created_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+created: 2026-08-24T10:51:36.850651893Z
+updated: 2026-08-24T10:54:25.654103925Z
+updated_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+description: 'Match joy''s UX: ''jyn ls help'', ''jyn add help'', ''jyn config help'' should print the subcommand''s help. Today only ''jyn <cmd> --help'' works, because subcommands without their own subcommands do not get an auto-inserted ''help''. Port joy''s argv rewriter (crates/joy-cli/src/lib.rs rewrite_trailing_help): if the last arg is literally ''help'' and every preceding arg is a valid clap subcommand at its level, rewrite the trailing ''help'' to ''--help'' before clap parses. Conservative: ''jyn add task help'' (where ''help'' would be part of the title) is not stolen because ''task'' is not a subcommand of ''add''.'
+comments:
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T10:51:36.979713031Z
+  text: 'Plan: (1) add a rewrite_trailing_help(argv, &Cli::command()) helper in crates/jyn-cli/src/lib.rs, direct port from joy - walks the subcommand tree via clap::Command::find_subcommand, only rewrites when every preceding arg is a valid subcommand at its level; (2) switch run() from Cli::parse() to Cli::parse_from(rewrite_trailing_help(std::env::args().collect(), &Cli::command())); (3) add bats scenarios: ''jyn help'', ''jyn ls help'', ''jyn add help'', ''jyn config help'', ''jyn config set help'', all print the expected ''Print help'' / usage; and one guard: ''jyn add "help"'' still creates a task titled ''help'' (the string is a positional TITLE for add, not a subcommand). Run fmt + clippy + full test suite.'
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T10:54:25.605805268Z
+  text: |-
+    [x] Ported joy's rewrite_trailing_help verbatim into crates/jyn-cli/src/lib.rs; run() now goes through Cli::parse_from(rewrite_trailing_help(argv, &Cli::command())).
+    [x] Verified manually: jyn help, jyn ls help, jyn add help, jyn close help, jyn config help, jyn config set help all print the expected subcommand help.
+    [x] Same escape hatch as joy: 'jyn add -- help' creates a task literally titled 'help' (POSIX '--' ends option processing).
+    [x] Two new bats scenarios: help-as-subcommand at every level, and the '--' guard. 96 bats + 60 unit tests, cargo fmt --check, clippy -D warnings all clean.
