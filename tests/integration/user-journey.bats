@@ -787,3 +787,29 @@ YAML
     [[ "$output" == *"#1"* ]]
     [[ "$output" != *"#1-"* ]]
 }
+
+@test "help advertises the bare short ID, not an unquoted # form" {
+    # An unquoted # starts a comment in bash/zsh/PowerShell, so help must
+    # not showcase an invocation the shell would swallow. JYN-0011-08.
+    run jyn show --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"short \`A1\`"* ]]
+    [[ "$output" != *"#A1"* ]]
+}
+
+@test "bare short IDs drive the whole lifecycle" {
+    jyn add "Shell-proof task" >/dev/null
+
+    run jyn show 1
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Shell-proof task"* ]]
+
+    run jyn edit 1 --prio high
+    [ "$status" -eq 0 ]
+
+    run jyn done 1
+    [ "$status" -eq 0 ]
+
+    run jyn reopen 1
+    [ "$status" -eq 0 ]
+}

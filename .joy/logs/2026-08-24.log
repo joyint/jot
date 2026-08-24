@@ -9,3 +9,8 @@
 2026-08-24T10:23:45.639Z JYN-0010-CA comment.added [ai:claude@joy delegated-by:horst.schwarz@joydev.com]
 2026-08-24T10:29:39.976Z JYN-0010-CA comment.added [ai:claude@joy delegated-by:horst.schwarz@joydev.com]
 2026-08-24T10:29:40.022Z JYN-0010-CA item.status_changed "in-progress -> review" [ai:claude@joy delegated-by:horst.schwarz@joydev.com]
+2026-08-24T10:35:34.367Z JYN-0011-08 item.created [ai:claude@joy delegated-by:horst.schwarz@joydev.com]
+2026-08-24T10:35:53.194Z JYN-0011-08 item.status_changed "new -> in-progress" [ai:claude@joy delegated-by:horst.schwarz@joydev.com]
+2026-08-24T10:35:53.251Z JYN-0011-08 comment.added [ai:claude@joy delegated-by:horst.schwarz@joydev.com]
+2026-08-24T10:37:06.390Z JYN-0011-08 comment.added [ai:claude@joy delegated-by:horst.schwarz@joydev.com]
+2026-08-24T10:37:06.445Z JYN-0011-08 item.status_changed "in-progress -> review" [ai:claude@joy delegated-by:horst.schwarz@joydev.com]

@@ -150,7 +150,7 @@ struct AddArgs {
 
 #[derive(clap::Args)]
 struct ShowArgs {
-    /// Task ID (short `#A1` or full `TODO-00A1-EA`).
+    /// Task ID (short `A1` or full `TODO-00A1-EA`).
     id: String,
 }
 
@@ -228,7 +228,7 @@ struct AssignArgs {
 
 #[derive(clap::Args)]
 struct IdArgs {
-    /// Task ID (short `#A1` or full `TODO-00A1-EA`).
+    /// Task ID (short `A1` or full `TODO-00A1-EA`).
     id: String,
 }
 
@@ -287,7 +287,7 @@ struct LsArgs {
 
 #[derive(clap::Args)]
 struct RmArgs {
-    /// Task ID (short `#A1` or full `TODO-00A1-EA`)
+    /// Task ID (short `A1` or full `TODO-00A1-EA`)
     id: String,
 }
 

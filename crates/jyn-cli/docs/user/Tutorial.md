@@ -136,17 +136,17 @@ jyn -w ~/projects/blog add "Draft post"   # creates ~/projects/blog/.jyn on firs
 `jyn show` prints the full detail of one task, including its description and tags.
 
 ```sh
-jyn show #A1
+jyn show A1
 ```
 
 `jyn edit` changes fields after the fact. Tags and assignees are added and removed individually; due date and description have explicit clear flags.
 
 ```sh
-jyn edit #A1 --title "Fix the nightly pipeline" --prio high
-jyn edit #A1 --add-tag urgent --remove-tag work
-jyn edit #A1 --due 2026-08-01      # set or change the due date
-jyn edit #A1 --no-due              # clear the due date
-jyn edit #A1 --no-desc             # clear the description
+jyn edit A1 --title "Fix the nightly pipeline" --prio high
+jyn edit A1 --add-tag urgent --remove-tag work
+jyn edit A1 --due 2026-08-01      # set or change the due date
+jyn edit A1 --no-due              # clear the due date
+jyn edit A1 --no-desc             # clear the description
 ```
 
 ## The Task Lifecycle
@@ -154,28 +154,30 @@ jyn edit #A1 --no-desc             # clear the description
 A task starts open. Complete it with `jyn close` (aliases `jyn done` and `jyn c`); bring it back with `jyn reopen`.
 
 ```sh
-jyn done #A1
-jyn reopen #A1
+jyn done A1
+jyn reopen A1
 ```
 
 Archiving hides a task from the normal list without deleting it, which suits things you want out of the way but kept on record. `jyn rm` deletes a task for good.
 
 ```sh
-jyn archive #A1
-jyn unarchive #A1
-jyn rm #A1
+jyn archive A1
+jyn unarchive A1
+jyn rm A1
 ```
 
 ## Referring to Tasks
 
-Every command that takes a task accepts either the short form shown in the list (for example `#A1`) or the full task ID. The short form is the convenient one for day-to-day work.
+Every command that takes a task accepts the short form shown in the list (for example `#A1`) or the full task ID. The short form is the convenient one for day-to-day work.
+
+Type the short form **without** the leading `#`: `jyn show A1`. The `#` you see in listings is display decoration — and in most shells (bash, zsh scripts, PowerShell) an unquoted `#` starts a comment, so `jyn show #A1` silently loses its argument before jyn ever runs. If you prefer to type it anyway, quote it: `jyn show '#A1'`. The same applies to occurrence addresses of recurring tasks: `jyn reopen 1@2026-08-24` works as-is, `'#1@2026-08-24'` needs the quotes.
 
 ## Assigning Tasks
 
 When you share a repo, `jyn assign` records who owns a task by e-mail.
 
 ```sh
-jyn assign #A1 lisa@example.com
+jyn assign A1 lisa@example.com
 ```
 
 ## Configuration

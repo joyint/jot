@@ -1,0 +1,27 @@
+id: JYN-0011-08
+title: 'Help and tutorial show unquoted #ID forms that shells swallow'
+type: bug
+status: review
+priority: high
+assignees:
+- member: ai:claude@joy
+capabilities:
+- implement
+- review
+effort: 2
+created_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+created: 2026-08-24T10:35:34.360819324Z
+updated: 2026-08-24T10:37:06.439253796Z
+updated_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+description: 'jyn show #1 fails in PowerShell, bash, and zsh scripts: an unquoted # at the start of a word begins a shell comment, so jyn receives no argument at all and clap errors with ''required arguments were not provided''. Reported from PowerShell v7 on Windows. The parser is fine - per JOT-002F-4D it accepts #A1 (quoted), bare A1, and full TODO-00A1-EA, and bare occurrence addressing 1@DATE also works. But jyn show --help and the tutorial exclusively showcase the unquoted # form, documenting an invocation most shells never deliver. Fix: use the bare form in all help texts and tutorial examples, and explain in the tutorial''s ''Referring to Tasks'' section that the leading # in listings is display decoration which must be quoted (''#A1'') if typed.'
+comments:
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T10:35:53.245346021Z
+  text: 'Plan: (1) sweep crates/jyn-cli/src/lib.rs arg help texts for #-prefixed ID examples and switch them to the bare form (e.g. ''A1'' / ''TODO-00A1-EA''); (2) rewrite the tutorial''s command examples to bare IDs and extend ''Referring to Tasks'' with the shell-comment rule (# must be quoted if typed; bare form recommended; applies to bash, zsh scripts, PowerShell); (3) re-sync in-crate tutorial copy; (4) bats: assert bare-form invocations work for show/edit/close (already covered implicitly) and that show --help no longer advertises an unquoted # form. No parser changes - JOT-002F-4D input rules already accept the bare form.'
+- author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+  date: 2026-08-24T10:37:06.383071916Z
+  text: |-
+    [x] Help texts for show/close/reopen/archive/unarchive/rm now read 'Task ID (short A1 or full TODO-00A1-EA)' - no unquoted # form advertised anywhere in --help.
+    [x] Tutorial: all twelve command examples switched to the bare form (jyn show A1 etc.); 'Referring to Tasks' now explains that the leading # in listings is display decoration, that unquoted # starts a comment in bash/zsh/PowerShell, that quoting ('#A1') is required if typed, and that occurrence addresses work bare too (1@2026-08-24). In-crate copy re-synced.
+    [x] No parser change: bare A1, quoted '#A1', full ID, and bare occurrence addressing all verified working (JOT-002F-4D rules).
+    [x] Two new bats scenarios: help advertises the bare form (and no #A1), and the bare-ID lifecycle (show/edit/done/reopen). 94 bats + unit tests, fmt, clippy -D warnings all green.
