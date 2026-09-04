@@ -1,7 +1,7 @@
 id: JYN-000F-61
 title: Add -w/--working-dir flag to pin the jyn workspace root
 type: task
-status: review
+status: closed
 priority: medium
 assignees:
 - member: ai:claude@joy
@@ -10,8 +10,8 @@ capabilities:
 effort: 2
 created_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
 created: 2026-08-24T06:07:19.848315405Z
-updated: 2026-08-24T06:07:49.869250261Z
-updated_by: ai:claude@joy delegated-by:horst.schwarz@joydev.com
+updated: 2026-09-04T21:32:40.584392552Z
+updated_by: horst.schwarz@joydev.com
 description: jyn's find_workspace_root walks up like git, so a .jyn/ in $HOME captures every subdirectory below it with no escape. Add a -w/--working-dir global flag (plus JYN_WORKING_DIR env) that skips the walk-up and uses the given directory as the workspace root verbatim, so a first `jyn -w ~/projects/x add` there creates a fresh .jyn/ alongside the parent's. Mirrors joy's own -w spelling. Includes bats tests and a short paragraph in the workspace chapter of the tutorial.
 comments:
 - author: ai:claude@joy delegated-by:horst.schwarz@joydev.com
