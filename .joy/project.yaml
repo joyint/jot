@@ -18,6 +18,7 @@ members:
       create: {}
       assign: {}
     adapter: claude
+    verify_key: aab5068719d5d18a17d72a54b30b81d01103e499e8bf527bff160094a1ad989b
     attestation:
       attester: horst.schwarz@joydev.com
       signed_fields:
